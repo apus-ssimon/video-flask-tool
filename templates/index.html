@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 AI Video Generator</h1>
+        <p class="subtitle">Create videos from text with images, videos, and AI voiceovers</p>
+        
+        <form action="/upload" method="POST" enctype="multipart/form-data" id="uploadForm">
+            
+            <!-- Text File Upload -->
+            <div class="form-section">
+                <h2>1. Upload Text Script</h2>
+                <p class="help-text">Upload a .txt file with your script (one line per segment)</p>
+                <input type="file" name="text_file" accept=".txt" required>
+            </div>
+
+            <!-- Media Files Upload -->
+            <div class="form-section">
+                <h2>2. Upload Media Files</h2>
+                <p class="help-text">Upload images and/or videos (numbered: 1.jpg, 2.mp4, etc.)</p>
+                <input type="file" name="media_files" multiple accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.avi,.mkv" required>
+            </div>
+
+            <!-- Video Orientation -->
+            <div class="form-section">
+                <h2>3. Video Orientation</h2>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="orientation" value="vertical" checked>
+                        <span>📱 Vertical (9:16) - TikTok, Instagram Stories, YouTube Shorts</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="orientation" value="horizontal">
+                        <span>🖥️ Horizontal (16:9) - YouTube, Standard Video</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- TTS Provider -->
+            <div class="form-section">
+                <h2>4. Text-to-Speech Provider</h2>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="tts_provider" value="hume" checked onchange="toggleVoiceSelect()">
+                        <span>🎭 Hume AI - Advanced emotional voice synthesis</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="tts_provider" value="elevenlabs" onchange="toggleVoiceSelect()">
+                        <span>🎙️ ElevenLabs - High-quality voice cloning</span>
+                    </label>
+                </div>
+
+                <!-- Voice Selection (for ElevenLabs) -->
+                <div id="voiceSelectDiv" style="display: none; margin-top: 15px;">
+                    <label for="voice">Select Voice:</label>
+                    <select name="voice" id="voiceSelect">
+                        <option value="">Default Voice</option>
+                        {% for name, voice_id in voices.items() %}
+                        <option value="{{ voice_id }}">{{ name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Text Display Options -->
+            <div class="form-section">
+                <h2>5. Display Options</h2>
+                <label class="checkbox-label">
+                    <input type="checkbox" name="show_text" checked>
+                    <span>Show text overlay on videos</span>
+                </label>
+                
+                <label class="checkbox-label" style="margin-top: 10px;">
+                    <input type="checkbox" name="include_video_audio">
+                    <span>Include original audio from video files</span>
+                </label>
+                
+                <div style="margin-top: 15px;">
+                    <label for="course_text">Course Text (bottom right, optional):</label>
+                    <input type="text" name="course_text" id="course_text" placeholder="e.g., Module 1: Introduction">
+                </div>
+            </div>
+
+            <!-- Background Music -->
+            <div class="form-section">
+                <h2>6. Background Music (Optional)</h2>
+                <p class="help-text">Upload an MP3 or M4A file for background music</p>
+                <input type="file" name="background_music" accept=".mp3,.m4a">
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" class="submit-btn">🚀 Generate Video</button>
+        </form>
+    </div>
+
+    <script>
+        function toggleVoiceSelect() {
+            const ttsProvider = document.querySelector('input[name="tts_provider"]:checked').value;
+            const voiceDiv = document.getElementById('voiceSelectDiv');
+            
+            if (ttsProvider === 'elevenlabs') {
+                voiceDiv.style.display = 'block';
+            } else {
+                voiceDiv.style.display = 'none';
+            }
+        }
+
+        // Form validation
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            const textFile = document.querySelector('input[name="text_file"]').files.length;
+            const mediaFiles = document.querySelector('input[name="media_files"]').files.length;
+            
+            if (textFile === 0) {
+                alert('Please upload a text file');
+                e.preventDefault();
+                return;
+            }
+            
+            if (mediaFiles === 0) {
+                alert('Please upload at least one media file');
+                e.preventDefault();
+                return;
+            }
+        });
+    </script>
+</body>
+</html>
