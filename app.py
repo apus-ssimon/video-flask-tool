@@ -15,6 +15,13 @@ import config
 from audio_processor import process_all_audio
 from video_generator import find_media_file, create_video_segment, get_video_info
 from concat import concat_videos
+from scripts.kaltura_uploader import (
+    create_kaltura_session, 
+    upload_to_kaltura, 
+    add_category_to_video,
+    request_captions,
+    get_kaltura_embed_code
+)
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -103,6 +110,7 @@ def upload_files():
         show_text = request.form.get('show_text') == 'on'
         include_video_audio = request.form.get('include_video_audio') == 'on'
         course_text = request.form.get('course_text', '').strip()
+        video_title = request.form.get('video_title', 'Generated Video').strip()
         
         # Handle text file upload
         if 'text_file' not in request.files:
@@ -144,7 +152,8 @@ def upload_files():
         job_status[job_id] = {
             'status': 'queued',
             'progress': 0,
-            'message': 'Job queued...'
+            'message': 'Job queued...',
+            'video_title': video_title
         }
         
         # Start video generation in background thread
@@ -193,6 +202,57 @@ def serve_video(job_id):
         return "Video not found", 404
     
     return send_file(output_path, mimetype='video/mp4')
+
+@app.route('/upload-to-kaltura/<job_id>', methods=['POST'])
+def upload_to_kaltura_route(job_id):
+    """Upload generated video to Kaltura"""
+    try:
+        # Get video details from request
+        data = request.get_json()
+        video_title = data.get('title', 'Generated Video')
+        video_tags = data.get('tags', '')
+        
+        # Find the generated video
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], f"{job_id}.mp4")
+        
+        if not os.path.exists(output_path):
+            return jsonify({'error': 'Video not found'}), 404
+        
+        # Get transcript from job status
+        transcript = job_status.get(job_id, {}).get('transcript', '')
+        
+        # Create Kaltura session
+        ks = create_kaltura_session()
+        
+        # Upload to Kaltura
+        entry_id = upload_to_kaltura(ks, output_path, video_title, video_tags)
+        
+        # Add categories
+        add_category_to_video(ks, entry_id)
+        
+        # Request captions
+        request_captions(ks, entry_id)
+        
+        # Get embed iframe code
+        embed_code = get_kaltura_embed_code(entry_id)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Video uploaded to Kaltura successfully',
+            'entryId': entry_id,
+            'embedCode': embed_code,
+            'transcript': transcript,
+            'videoTitle': video_title
+        })
+    
+    except Exception as e:
+        print(f"Kaltura upload error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'message': 'Failed to upload to Kaltura'
+        }), 500
 
 def generate_video_background(job_id, job_folder, text_path, media_folder, 
                               orientation, tts_provider, selected_voice, 
@@ -243,23 +303,15 @@ def generate_video_background(job_id, job_folder, text_path, media_folder,
             if not media_path:
                 continue
             
-            # Keep original text line for skip detection
-            original_text_line = text_lines[i - 1] if i <= len(text_lines) else ""
-            is_skip = original_text_line.strip() == '-skip-'
+            text_line = text_lines[i - 1] if i <= len(text_lines) else ""
+            if text_line.strip() == '-skip-':
+                text_line = ""
             
             overlay_text = course_text if i == 1 and course_text else None
-            
-            # Determine display text: empty for skip or when show_text is off
-            if is_skip or not show_text:
-                display_text = ""
-            else:
-                display_text = original_text_line
-            
-            # For skip videos, pass '-skip-' so video_generator can detect it
-            text_to_pass = '-skip-' if is_skip else display_text
+            display_text = text_line if show_text else ""
             
             video_file = create_video_segment(
-                media_path, audio_path, text_to_pass, i, len(text_lines),
+                media_path, audio_path, display_text, i, len(text_lines),
                 is_video, orientation_config, tts_provider, overlay_text=overlay_text,
                 include_video_audio=include_video_audio
             )
@@ -295,6 +347,15 @@ def generate_video_background(job_id, job_folder, text_path, media_folder,
         
         job_status[job_id]['message'] = 'Cleaning up...'
         job_status[job_id]['progress'] = 90
+        
+        # Save transcript before cleanup
+        try:
+            with open('text.txt', 'r', encoding='utf-8') as f:
+                lines = [line.strip() for line in f if line.strip() and line.strip() != '-skip-']
+                job_status[job_id]['transcript'] = ' '.join(lines)
+        except Exception as e:
+            print(f"Could not save transcript: {e}")
+            job_status[job_id]['transcript'] = ""
         
         # Return to original directory before cleanup
         os.chdir(original_cwd)
