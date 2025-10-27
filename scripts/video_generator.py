@@ -186,7 +186,7 @@ def create_video_segment_from_image(image_path, audio_path, text_line, segment_i
             )
 
         # Apply vignette effect
-        frame = create_vignette_effect(frame, VIGNETTE_STRENGTH)
+        frame = create_vignette_effect(frame, VIGNETTE_STRENGTH_IMAGE)
 
         # Save frame
         frame_path = os.path.join(frames_dir, f"frame_{frame_num:06d}.jpg")
@@ -287,7 +287,7 @@ def create_video_segment_from_video(video_path, audio_path, text_line, segment_i
     video_filters.append(pad_filter)
     
     # Apply vignette
-    vignette_filter = f"vignette=PI/{VIGNETTE_STRENGTH}"
+    vignette_filter = f"vignette=PI/{VIGNETTE_STRENGTH_VIDEO}"
     video_filters.append(vignette_filter)
     
     # Handle looping if needed
