@@ -12,7 +12,7 @@ OUTPUT_VIDEO = "output.mp4"
 TEXT_FILE = "text.txt"
 
 # Audio settings
-MUSIC_VOLUME = 0.2  # Background music volume (0.1 = quiet, 0.5 = loud)
+MUSIC_VOLUME = 0.15  # Background music volume (0.1 = quiet, 0.5 = loud)
 MUSIC_FADEOUT = 2.0  # Background music fade-out duration in seconds
 # TTS provider-specific speed settings
 TTS_SPEED_SETTINGS = {
