@@ -49,14 +49,20 @@ def get_video_info(video_path):
     
     return duration, width, height
 
-def create_video_segment(media_path, audio_path, text_line, segment_index, total_segments, is_video, orientation_config, tts_provider, overlay_text=None, include_video_audio=False):
-    """Create a video segment from either an image or video file"""
+def create_video_segment(media_path, audio_path, text_line, segment_index, total_segments, is_video, orientation_config, tts_provider, overlay_text=None, header_text=None, include_video_audio=False):
+    """Create a video segment from either an image or video file
     
-    # Create overlay image once if this is the first segment and has overlay text
+    Parameters:
+    - text_line: Used for skip/loop logic (raw text from file)
+    - overlay_text: The actual text to display on video (controlled by checkbox)
+    - header_text: Title text to display (if provided)
+    """
+    
+    # Create overlay image once if this is the first segment and has header text
     overlay_image_path = None
-    if overlay_text and segment_index == 1:
+    if header_text and segment_index == 1:
         overlay_image_path = create_text_overlay_image(
-            overlay_text,
+            header_text,
             orientation_config["width"],
             orientation_config["height"],
             font_size=36,
@@ -68,31 +74,39 @@ def create_video_segment(media_path, audio_path, text_line, segment_index, total
         return create_video_segment_from_image(
             media_path, 
             audio_path, 
-            text_line, 
+            text_line,  # Keep for skip/loop logic
             segment_index, 
             total_segments, 
             orientation_config, 
             tts_provider, 
-            overlay_text,
-            overlay_image_path
+            overlay_text,  # Text to actually display
+            overlay_image_path,
+            header_text  # Pass header_text
         )
     else:
         # For video-based segments
         return create_video_segment_from_video(
             media_path, 
             audio_path, 
-            text_line, 
+            text_line,  # Keep for skip/loop logic
             segment_index, 
             total_segments, 
             orientation_config, 
             tts_provider, 
-            overlay_text,
+            overlay_text,  # Text to actually display
             overlay_image_path,
+            header_text,  # Pass header_text
             include_video_audio
         )
 
-def create_video_segment_from_image(image_path, audio_path, text_line, segment_index, total_segments, orientation_config, tts_provider, overlay_text=None, overlay_image_path=None):
-    """Create a video segment from an image with zoom, vignette, and text overlay using Pillow"""
+def create_video_segment_from_image(image_path, audio_path, text_line, segment_index, total_segments, orientation_config, tts_provider, overlay_text=None, overlay_image_path=None, header_text=None):
+    """Create a video segment from an image with zoom, vignette, and text overlay using Pillow
+    
+    Parameters:
+    - text_line: Used for skip detection and loop logic
+    - overlay_text: The actual text to display (controlled by checkbox)
+    - header_text: Title/header text (if any)
+    """
     print(f"   Creating segment {segment_index} from image with Pillow...")
     
     target_width = orientation_config["width"]
@@ -124,7 +138,7 @@ def create_video_segment_from_image(image_path, audio_path, text_line, segment_i
     if overlay_image_path and segment_index == 1:
         try:
             overlay_img = Image.open(overlay_image_path).convert("RGBA")
-            print(f"   Loaded overlay image for course text: {overlay_text}")
+            print(f"   Loaded overlay image for header text: {header_text}")
         except Exception as e:
             print(f"   Could not load overlay image: {e}")
             overlay_img = None
@@ -144,14 +158,12 @@ def create_video_segment_from_image(image_path, audio_path, text_line, segment_i
         zoom_factor = create_zoom_factor(t, audio_duration, ZOOM_TYPE, ZOOM_SPEED)
         frame = apply_zoom_effect(canvas, target_width, target_height, zoom_factor)
         
-        # Apply vignette effect
-        frame = create_vignette_effect(frame, VIGNETTE_STRENGTH)
-        
         # Apply fade in/out (only at beginning and end of entire video)
         frame = apply_fade_effect(frame, t, FADE_DURATION, audio_duration, segment_index, total_segments, t)
         
-        # Add main text overlay
-        frame = add_text_overlay(frame, text_line, target_width, target_height, text_size, text_y_position, text_wrap_width)
+        # Add main text overlay - use overlay_text (controlled by checkbox) instead of text_line
+        if overlay_text and overlay_text.strip():
+            frame = add_text_overlay(frame, overlay_text, target_width, target_height, text_size, text_y_position, text_wrap_width)
 
         # Add overlay image if available
         if overlay_img and segment_index == 1:
@@ -160,18 +172,21 @@ def create_video_segment_from_image(image_path, audio_path, text_line, segment_i
             # Composite the overlay on top
             frame = Image.alpha_composite(frame_rgba, overlay_img).convert("RGB")
             if frame_num == 0:
-                print(f"   Added overlay image to frame with course text: {overlay_text}")
+                print(f"   Added overlay image to frame with header text: {header_text}")
         # Fallback to old method if overlay image isn't available
-        elif overlay_text and segment_index == 1 and not overlay_img:
+        elif header_text and segment_index == 1 and not overlay_img:
             frame = add_corner_text_overlay(
                 frame,
-                overlay_text,
+                header_text,
                 target_width,
                 target_height,
                 font_size=36,
                 padding=50,
                 font_path="fonts/Gibson-Bold.otf"
             )
+
+        # Apply vignette effect
+        frame = create_vignette_effect(frame, VIGNETTE_STRENGTH)
 
         # Save frame
         frame_path = os.path.join(frames_dir, f"frame_{frame_num:06d}.jpg")
@@ -199,24 +214,30 @@ def create_video_segment_from_image(image_path, audio_path, text_line, segment_i
         "ffmpeg", "-y",
         "-i", temp_video_path,
         "-i", padded_audio_path,
-        "-filter_complex", f"[1:a]atempo={audio_speed}[a]",
-        "-map", "0:v", "-map", "[a]",
-        "-c:v", "copy", "-c:a", "aac",
+        "-c:v", "copy",
+        "-c:a", "aac",
         "-shortest",
         final_video_path
     ]
     
     subprocess.run(cmd, check=True, capture_output=True)
     
-    # Clean up temp files
+    # Clean up temporary files
     os.remove(temp_video_path)
     shutil.rmtree(frames_dir)
     
+    print(f"   ✅ Created video segment {segment_index}")
     return final_video_path
 
-def create_video_segment_from_video(video_path, audio_path, text_line, segment_index, total_segments, orientation_config, tts_provider, overlay_text=None, overlay_image_path=None, include_video_audio=False):
-    """Create a video segment from an existing video with simple processing"""
-    print(f"   Creating segment {segment_index} from video (simple mode)...")
+def create_video_segment_from_video(video_path, audio_path, text_line, segment_index, total_segments, orientation_config, tts_provider, overlay_text=None, overlay_image_path=None, header_text=None, include_video_audio=False):
+    """Create a video segment from a video file
+    
+    Parameters:
+    - text_line: Used for skip detection and loop logic  
+    - overlay_text: The actual text to display (controlled by checkbox)
+    - header_text: Title/header text (if any)
+    """
+    print(f"   Processing video segment {segment_index}...")
     
     target_width = orientation_config["width"]
     target_height = orientation_config["height"]
@@ -224,63 +245,57 @@ def create_video_segment_from_video(video_path, audio_path, text_line, segment_i
     text_y_position = orientation_config["text_y_position"]
     text_wrap_width = orientation_config["text_wrap_width"]
     
-    # Get video info first
-    try:
-        video_duration, video_width, video_height = get_video_info(video_path)
-        print(f"   Video info: {video_duration:.2f}s, {video_width}x{video_height}")
-    except Exception as e:
-        print(f"Could not get video info: {e}")
-        return None
-
-    # Handle skip videos (no audio processing needed)
+    # Get video info
+    video_duration, video_width, video_height = get_video_info(video_path)
+    
+    # Load audio and add padding
+    original = AudioSegment.from_file(audio_path)
+    silence = AudioSegment.silent(duration=1000)  # 1 second
+    padded_audio = original + silence
+    
+    # Export padded audio
+    padded_audio_path = f"temp_audio/{segment_index}_padded.mp3"
+    padded_audio.export(padded_audio_path, format="mp3")
+    
+    # Get audio duration in seconds
+    audio_speed = TTS_SPEED_SETTINGS[tts_provider]
+    audio_duration = padded_audio.duration_seconds / audio_speed
+    
+    # Determine if we need to loop the video (using text_line for skip logic)
+    needs_loop = False
     if text_line and text_line.strip() == '-skip-':
-        print(f"   Skip marker detected - using video duration ({video_duration:.2f}s) with no audio")
-        # Use the pre-generated silence file as-is (no padding)
-        padded_audio_path = audio_path
+        # For -skip-, use the video's natural duration
         final_duration = video_duration
-        loops_needed = 1  # Don't loop skip videos
+        print(f"   Using natural video duration: {final_duration:.2f}s (skip mode)")
     else:
-        if not os.path.exists(audio_path):
-            print(f"Audio file not found: {audio_path}")
-            return None
-            
-        original = AudioSegment.from_file(audio_path)
-        silence = AudioSegment.silent(duration=1000)
-        padded_audio = original + silence
-        
-        audio_duration_seconds = padded_audio.duration_seconds
-        final_duration = audio_duration_seconds  # Always use audio duration
-
-        # Calculate how many loops we need if video is shorter
-        loops_needed = 1
-        if video_duration < audio_duration_seconds:
-            loops_needed = int(audio_duration_seconds / video_duration) + 1
-            print(f"   Video ({video_duration:.2f}s) shorter than audio ({audio_duration_seconds:.2f}s) - will loop {loops_needed} times")
-        
-        if padded_audio.duration_seconds < final_duration:
-            additional_silence = AudioSegment.silent(duration=int((final_duration - padded_audio.duration_seconds) * 1000))
-            padded_audio += additional_silence
-        elif padded_audio.duration_seconds > final_duration:
-            padded_audio = padded_audio[:int(final_duration * 1000)]
-        
-        padded_audio_path = f"temp_audio/{segment_index}_padded.mp3"
-        padded_audio.export(padded_audio_path, format="mp3")
+        # Otherwise, match audio duration
+        final_duration = audio_duration
+        if final_duration > video_duration:
+            needs_loop = True
+            print(f"   Video will loop: video={video_duration:.2f}s, needed={final_duration:.2f}s")
     
-    final_video_path = f"temp_video/{segment_index}.mp4"
-    
-    # Prepare inputs for ffmpeg
+    # Prepare FFmpeg inputs
     inputs = ["-i", video_path, "-i", padded_audio_path]
     
-    # Prepare video filters
-    video_filters = [
-        f"scale=w={target_width}:h={target_height}:force_original_aspect_ratio=decrease",
-        f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black"
-    ]
-
-    # Add looping if needed
-    if loops_needed > 1:
-        video_filters.append(f"loop=loop={loops_needed-1}:size=32767:start=0")
+    # Build video filters
+    video_filters = []
     
+    # Scale and pad to target resolution
+    scale_filter = f"scale=w={target_width}:h={target_height}:force_original_aspect_ratio=decrease"
+    pad_filter = f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black"
+    video_filters.append(scale_filter)
+    video_filters.append(pad_filter)
+    
+    # Apply vignette
+    vignette_filter = f"vignette=PI/{VIGNETTE_STRENGTH}"
+    video_filters.append(vignette_filter)
+    
+    # Handle looping if needed
+    if needs_loop:
+        loop_count = int(final_duration / video_duration) + 1
+        video_filters.insert(0, f"loop=loop={loop_count}:size=999999:start=0")
+    
+    # Apply fade effects
     if segment_index == 1:
         video_filters.append(f"fade=t=in:st=0:d={FADE_DURATION}")
     if segment_index == total_segments:
@@ -293,7 +308,7 @@ def create_video_segment_from_video(video_path, audio_path, text_line, segment_i
         # Add overlay image as input
         inputs.extend(["-i", overlay_image_path])
         has_overlay = True
-        print(f"   Adding overlay image for course text: {overlay_text}")
+        print(f"   Adding overlay image for header text: {header_text}")
     
     # Prepare filter graph
     filter_parts = []
@@ -303,10 +318,10 @@ def create_video_segment_from_video(video_path, audio_path, text_line, segment_i
     filter_parts.append(video_filter_part)
     last_video_label = "[scaled_video]"
     
-    # Add main text
-    if text_line and text_line.strip() != '-skip-':
-        escaped_text = escape_text_for_ffmpeg(text_line, text_wrap_width)
-        print(f"   Debug - Original text: {text_line}")
+    # Add main text - use overlay_text (controlled by checkbox) instead of text_line
+    if overlay_text and overlay_text.strip():
+        escaped_text = escape_text_for_ffmpeg(overlay_text, text_wrap_width)
+        print(f"   Debug - Display text: {overlay_text}")
         print(f"   Debug - Escaped text: {escaped_text}")
         text_y_pos = target_height - 50
         text_filter = f"{last_video_label}drawtext=text='{escaped_text}':fontsize={text_size}:fontcolor=white:bordercolor=black:borderw=3:x=(w-text_w)/2:y=h-th-50[video_with_text]"
@@ -321,10 +336,10 @@ def create_video_segment_from_video(video_path, audio_path, text_line, segment_i
         filter_parts.append(overlay_filter)
         last_video_label = "[video_with_overlay]"
     # Fallback to old method if overlay image isn't available
-    elif overlay_text and segment_index == 1 and not has_overlay:
+    elif header_text and segment_index == 1 and not has_overlay:
         padding = 50
         font_size = 36
-        escaped_overlay_text = escape_text_for_ffmpeg(overlay_text, 40)
+        escaped_overlay_text = escape_text_for_ffmpeg(header_text, 40)
         text_x = f"w-tw-{padding}"
         text_y = f"h-th-{padding}"
         
@@ -338,7 +353,7 @@ def create_video_segment_from_video(video_path, audio_path, text_line, segment_i
         overlay_filter = f"{last_video_label}drawtext=text='{escaped_overlay_text}'{font_param}:fontsize={font_size}:fontcolor=black:bordercolor=white:borderw=2:x={text_x}:y={text_y}[video_with_overlay]"
         filter_parts.append(overlay_filter)
         last_video_label = "[video_with_overlay]"
-        print(f"   Adding corner text overlay using drawtext: '{overlay_text}' to video")
+        print(f"   Adding corner text overlay using drawtext: '{header_text}' to video")
     
     # Join all filter parts
     complete_filter = ";".join(filter_parts)
@@ -348,6 +363,9 @@ def create_video_segment_from_video(video_path, audio_path, text_line, segment_i
         "ffmpeg", "-y"
     ]
     cmd.extend(inputs)
+    
+    final_video_path = f"temp_video/{segment_index}.mp4"
+    
     # Determine audio mapping based on include_video_audio flag
     if include_video_audio:
         # Mix original video audio with TTS audio
@@ -383,10 +401,15 @@ def create_video_segment_from_video(video_path, audio_path, text_line, segment_i
         return final_video_path
     except subprocess.CalledProcessError as e:
         print(f"FFmpeg error for segment {segment_index}: {e}")
-        return _try_video_fallbacks(video_path, padded_audio_path, final_duration, final_video_path, segment_index, target_width, target_height, overlay_text, overlay_image_path, include_video_audio)
+        return _try_video_fallbacks(video_path, padded_audio_path, final_duration, final_video_path, segment_index, target_width, target_height, overlay_text, overlay_image_path, header_text, include_video_audio)
 
-def _try_video_fallbacks(video_path, padded_audio_path, final_duration, final_video_path, segment_index, target_width, target_height, overlay_text=None, overlay_image_path=None, include_video_audio=False):
-    """Try fallback methods for video processing"""
+def _try_video_fallbacks(video_path, padded_audio_path, final_duration, final_video_path, segment_index, target_width, target_height, overlay_text=None, overlay_image_path=None, header_text=None, include_video_audio=False):
+    """Try fallback methods for video processing
+    
+    Parameters:
+    - overlay_text: The actual text to display (controlled by checkbox)
+    - header_text: Title/header text (if any)
+    """
     print(f"   Trying fallback: simple audio replacement with scaling...")
     
     fallback_filter = f"scale=w={target_width}:h={target_height}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black"
@@ -397,7 +420,7 @@ def _try_video_fallbacks(video_path, padded_audio_path, final_duration, final_vi
     if overlay_image_path and segment_index == 1:
         inputs.extend(["-i", overlay_image_path])
         has_overlay = True
-        print(f"   Adding overlay image in fallback for course text: {overlay_text}")
+        print(f"   Adding overlay image in fallback for header text: {header_text}")
     
     try:
         # Start with basic fallback filter
@@ -407,10 +430,10 @@ def _try_video_fallbacks(video_path, padded_audio_path, final_duration, final_vi
         if has_overlay:
             filter_complex += f"[v];[v][2:v]overlay=0:0"
         # Fallback to old method if overlay image isn't available
-        elif overlay_text and segment_index == 1 and not has_overlay:
+        elif header_text and segment_index == 1 and not has_overlay:
             padding = 50
             font_size = 36
-            escaped_overlay_text = escape_text_for_ffmpeg(overlay_text, 40)
+            escaped_overlay_text = escape_text_for_ffmpeg(header_text, 40)
             text_x = f"w-tw-{padding}"
             text_y = f"h-th-{padding}"
             
@@ -422,7 +445,7 @@ def _try_video_fallbacks(video_path, padded_audio_path, final_duration, final_vi
                 font_param = ""
             
             filter_complex += f",drawtext=text='{escaped_overlay_text}'{font_param}:fontsize={font_size}:fontcolor=black:bordercolor=white:borderw=2:x={text_x}:y={text_y}"
-            print(f"   Adding corner text overlay in fallback using drawtext: '{overlay_text}'")
+            print(f"   Adding corner text overlay in fallback using drawtext: '{header_text}'")
         
         filter_complex += "[v]"
         

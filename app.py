@@ -107,7 +107,7 @@ def upload_files():
         orientation = request.form.get('orientation', 'vertical')
         tts_provider = request.form.get('tts_provider', 'hume')
         selected_voice = request.form.get('voice', None)
-        show_text = request.form.get('show_text') == 'on'
+        show_text = 'show_text' in request.form
         include_video_audio = request.form.get('include_video_audio') == 'on'
         course_text = request.form.get('course_text', '').strip()
         video_title = request.form.get('video_title', 'Generated Video').strip()
@@ -160,7 +160,7 @@ def upload_files():
         thread = threading.Thread(
             target=generate_video_background,
             args=(job_id, job_folder, text_path, media_folder, orientation, 
-                  tts_provider, selected_voice, show_text, course_text, music_path, include_video_audio)
+                  tts_provider, selected_voice, show_text, course_text, music_path, video_title, include_video_audio)
         )
         thread.daemon = True
         thread.start()
@@ -256,7 +256,7 @@ def upload_to_kaltura_route(job_id):
 
 def generate_video_background(job_id, job_folder, text_path, media_folder, 
                               orientation, tts_provider, selected_voice, 
-                              show_text, course_text, music_path, include_video_audio):
+                              show_text, course_text, music_path, video_title, include_video_audio):
     """Background task for video generation"""
     # Change to job directory so all relative paths work
     original_cwd = os.getcwd()
@@ -304,17 +304,24 @@ def generate_video_background(job_id, job_folder, text_path, media_folder,
                 continue
             
             text_line = text_lines[i - 1] if i <= len(text_lines) else ""
-            if text_line.strip() == '-skip-':
-                text_line = ""
-            
+
             overlay_text = course_text if i == 1 and course_text else None
-            display_text = text_line if show_text else ""
-            
+
+            # Determine what text to display (respect checkbox)
+            if show_text and text_line.strip() != '-skip-':
+                display_text = text_line
+            else:
+                display_text = ""
+
+            # Pass text_line for logic, display_text for overlay
             video_file = create_video_segment(
-                media_path, audio_path, display_text, i, len(text_lines),
-                is_video, orientation_config, tts_provider, overlay_text=overlay_text,
+                media_path, audio_path, text_line, i, len(text_lines),  # raw for skip/loop
+                is_video, orientation_config, tts_provider,
+                overlay_text=display_text,  # text controlled by checkbox
+                header_text=video_title,   # FIX: changed from course_title to video_title
                 include_video_audio=include_video_audio
             )
+
             
             if video_file:
                 video_files.append(video_file)

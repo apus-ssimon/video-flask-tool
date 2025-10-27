@@ -43,7 +43,7 @@ ORIENTATION_OPTIONS = {
 # Text and visual effects settings
 TEXT_OPACITY = 0.5  # Background box opacity (0.0 = transparent, 1.0 = solid)
 TEXT_LINE_SPACING = 18  # Spacing between lines in pixels
-VIGNETTE_STRENGTH = 0.5  # Vignette strength (0.1 = subtle, 0.5 = strong, 0.8 = dramatic)
+VIGNETTE_STRENGTH = 8 # (1 - Strong, 10 - Light)
 ZOOM_SPEED = 0.15  # Zoom amount (0.05 = subtle, 0.15 = moderate, 0.3 = dramatic)
 ZOOM_TYPE = "ease-out"  # Options: "linear", "ease-in", "ease-out", "ease-in-out"
 FADE_DURATION = 0.5  # Fade in/out duration in seconds

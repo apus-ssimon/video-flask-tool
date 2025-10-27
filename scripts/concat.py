@@ -81,6 +81,19 @@ def concat_videos(video_dir, output_path, background_music="song.m4a"):
 
     expected_durations = []
     for video_file in video_files:
+        base_name = os.path.basename(video_file)
+        segment_index = os.path.splitext(base_name)[0]
+
+        # 🔹 Check if a _duration.txt exists (written by video_generator.py for -skip- clips)
+        duration_file = os.path.join(video_dir, f"{segment_index}_duration.txt")
+        if os.path.exists(duration_file):
+            with open(duration_file) as df:
+                natural_duration = float(df.read().strip())
+                print(f"   Using natural duration from {duration_file}: {natural_duration:.2f}s")
+                expected_durations.append(natural_duration)
+                continue  # Skip ffprobe since we already have it
+
+        # Otherwise, fall back to probing the actual video file
         info = get_video_info(video_file)
         if info and 'format' in info:
             expected_durations.append(float(info['format']['duration']))
@@ -137,3 +150,8 @@ def concat_videos(video_dir, output_path, background_music="song.m4a"):
 
     except subprocess.CalledProcessError as e:
         print(f"❌ Concatenation failed: {e.stderr.decode()}")
+
+    # Remove any leftover duration marker files
+    for f in glob.glob(os.path.join(video_dir, "*_duration.txt")):
+        os.remove(f)
+
