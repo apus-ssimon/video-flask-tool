@@ -67,6 +67,7 @@ def index():
     """Home page with upload form"""
     # Clean up old output files (optional: only delete files older than 1 hour)
     cleanup_old_outputs()
+    cleanup_old_uploads() 
     voices = load_voices()
     return render_template('index.html', voices=voices)
 
@@ -253,6 +254,33 @@ def upload_to_kaltura_route(job_id):
             'error': str(e),
             'message': 'Failed to upload to Kaltura'
         }), 500
+    
+def cleanup_old_uploads(max_age_hours=2):
+    """Clean up old upload folders that weren't properly deleted"""
+    try:
+        import time
+        upload_folder = app.config['UPLOAD_FOLDER']
+        
+        if not os.path.exists(upload_folder):
+            return
+        
+        current_time = time.time()
+        max_age_seconds = max_age_hours * 3600
+        
+        for folder_name in os.listdir(upload_folder):
+            folder_path = os.path.join(upload_folder, folder_name)
+            
+            if os.path.isdir(folder_path):
+                folder_age = current_time - os.path.getmtime(folder_path)
+                
+                if folder_age > max_age_seconds:
+                    try:
+                        shutil.rmtree(folder_path)
+                        print(f"Cleaned up old upload: {folder_name}")
+                    except Exception as e:
+                        print(f"Could not remove: {e}")
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
 
 def generate_video_background(job_id, job_folder, text_path, media_folder, 
                               orientation, tts_provider, selected_voice, 
@@ -367,8 +395,13 @@ def generate_video_background(job_id, job_folder, text_path, media_folder,
         # Return to original directory before cleanup
         os.chdir(original_cwd)
         
-        # Cleanup job folder
-        shutil.rmtree(job_folder)
+        # Cleanup job folder with error handling
+        try:
+            shutil.rmtree(job_folder)
+            print(f"✓ Cleaned up job folder: {job_id}")
+        except Exception as e:
+            print(f"Warning: Could not clean up job folder {job_id}: {e}")
+            # Don't fail - video was generated successfully
         
         job_status[job_id]['status'] = 'completed'
         job_status[job_id]['message'] = 'Video generated successfully!'
