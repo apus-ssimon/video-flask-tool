@@ -56,7 +56,7 @@
             font-size: 11px;
             white-space: pre-wrap;
             word-break: break-all;
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
             color: #333;
             line-height: 1.4;
@@ -75,22 +75,6 @@
         @keyframes fadeInOut {
             0%, 100% { opacity: 0; }
             50% { opacity: 1; }
-        }
-
-        .checkbox-group {
-            margin: 15px 0;
-            padding: 12px;
-            background: #fff;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-        }
-
-        .checkbox-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            color: #333;
         }
     </style>
 </head>
@@ -123,47 +107,20 @@
             <div id="kalturaStatus" style="margin: 15px 0; display: none;"></div>
             
             <div id="kalturaResults" style="display: none; margin: 20px 0;">
-                <!-- Code Export Sections -->
+                <!-- Combined Embed Code and Transcript -->
                 <div class="code-section">
                     <div class="code-header">
-                        <span class="code-title">Video Player Embed Code</span>
-                        <button class="copy-code-button" onclick="copyCode(this, 'embed-code-kaltura')">
+                        <span class="code-title">Complete eLearning Code (Video + Transcript)</span>
+                        <button class="copy-code-button" onclick="copyCode(this, 'combined-code-block')">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                             </svg>
                             Copy Code
                         </button>
-                        <span class="copy-success-badge" id="embed-success">Copied!</span>
+                        <span class="copy-success-badge" id="combined-success">Copied!</span>
                     </div>
-                    <div class="code-block" id="embed-code-kaltura"></div>
-                </div>
-
-                <!-- Transcript with Accordion Option -->
-                <div class="code-section">
-                    <div class="code-header">
-                        <span class="code-title">Transcript</span>
-                    </div>
-                    
-                    <div class="checkbox-group">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="useAccordion" name="useAccordion" onchange="updateTranscriptCode()">
-                            Wrap transcript in Bootstrap accordion format when copying
-                        </label>
-                    </div>
-
-                    <div class="code-header" style="margin-top: 12px;">
-                        <span class="code-title">Transcript Code for eLearning</span>
-                        <button class="copy-code-button" onclick="copyCode(this, 'transcript-code-block')">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                            Copy Code
-                        </button>
-                        <span class="copy-success-badge" id="transcript-success">Copied!</span>
-                    </div>
-                    <div class="code-block" id="transcript-code-block"></div>
+                    <div class="code-block" id="combined-code-block"></div>
                 </div>
             </div>
             
@@ -256,17 +213,11 @@
                     // Store plain transcript text
                     transcriptPlainText = data.transcript || 'No transcript available';
                     
-                    // Populate embed code block with wrapped divs
-                    const wrappedEmbedCode = `<div class="video-wrapper">
-  <div class="embed-responsive embed-responsive-16by9">
-    ${data.embedCode}
-  </div>
-</div>`;
-                    document.getElementById('embed-code-kaltura').textContent = wrappedEmbedCode;
+                    // Generate combined code with video embed and transcript
+                    const currentYear = new Date().getFullYear();
+                    const combinedCode = generateCombinedCode(data.embedCode, transcriptPlainText, currentYear);
                     
-                    // Populate transcript code block
-                    updateTranscriptCode();
-                    
+                    document.getElementById('combined-code-block').textContent = combinedCode;
                     resultsDiv.style.display = 'block';
                 } else {
                     throw new Error(data.message || 'Upload failed');
@@ -281,39 +232,29 @@
             });
         }
 
-        function updateTranscriptCode() {
-            const useAccordion = document.getElementById('useAccordion').checked;
-            const codeBlock = document.getElementById('transcript-code-block');
-            
-            let codeToDisplay = '';
-            
-            if (useAccordion) {
-                codeToDisplay = generateAccordionCode(transcriptPlainText);
-            } else {
-                codeToDisplay = transcriptPlainText;
-            }
-            
-            codeBlock.textContent = codeToDisplay;
-        }
+        function generateCombinedCode(embedCode, transcriptText, year) {
+            return `<!-- Video Section -->
+<div class="video-wrapper">
+  <div class="embed-responsive embed-responsive-16by9">
+    ${embedCode}
+  </div>
+</div>
 
-        function generateAccordionCode(transcriptText) {
-            return `<p class="small">Accordion: start copy</p>
-<!-- Accordion headings should be changed to respect page hierarchy -->
+<!-- Transcript Section -->
 <div class="accordion">
- <div class="card">
-<div class="card-header">
- <h2 class="card-title">
-Transcript
- </h2>
-</div>
-<div class="collapse">
- <div class="card-body">
-<p>${transcriptText}</p>
- </div>
-</div>
- </div>
-</div>
-<p class="small">Accordion: end copy</p>`;
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">
+        Transcript
+      </h2>
+    </div>
+    <div class="collapse">
+      <div class="card-body">
+        <p>${transcriptText} (Script generated by Copilot, ${year}. Edited by APUS.)</p>
+      </div>
+    </div>
+  </div>
+</div>`;
         }
 
         function copyCode(button, codeId) {
